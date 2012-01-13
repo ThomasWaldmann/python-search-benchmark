@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright: 2011 MoinMoin:ThomasWaldmann
 # License: MIT licensed
 """
@@ -21,21 +22,27 @@ is that easy, why not use it? :)
 import codecs
 import os
 import shutil
-import random
+from random import choice, shuffle
 import time
 
-DICT_FILE = '/usr/share/dict/american-english'
 WORD_COUNT = 10000
+WORD_LEN = 10
 
-# prepare data, so this doesn't go into timings:
-with codecs.open(DICT_FILE, 'r', 'utf-8') as f:
-    WORDS = f.read().split(u'\n')
+def generate_word(length):
+    chars = list(u"abcdefghijklmnopqrstuvwxyz" +
+                 u"ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+                 u"äöüÄÖÜß")
+    r = xrange(length)
+    word = u''.join(choice(chars) for i in r)
+    return word
 
-WORDS = WORDS[:WORD_COUNT]
-WORD_COUNT = len(WORDS)
-
-SHUFFLED_WORDS = WORDS[:]
-random.shuffle(SHUFFLED_WORDS)
+def generate_data():
+    global WORD_COUNT, WORDS, SHUFFLED_WORDS
+    # prepare data, so this doesn't go into timings:
+    r = xrange(WORD_COUNT)
+    WORDS = [generate_word(WORD_LEN) for i in r]
+    SHUFFLED_WORDS = WORDS[:]
+    shuffle(SHUFFLED_WORDS)
 
 
 class Bench(object):
@@ -146,6 +153,7 @@ class Xappy(Bench):
 
 
 if __name__ == '__main__':
+    generate_data()
     Xappy('xapian_ix').bench_all()
     Whoosh('whoosh_ix').bench_all()
 
