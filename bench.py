@@ -2,18 +2,30 @@
 # Copyright: 2011 MoinMoin:ThomasWaldmann
 # License: MIT licensed
 """
-A simple python search library benchmark.
-
-We just index all words and their lengths from the dict file.
-
-Afterwards we search the index for all words in random order
-and read the stored fields (== the word and its length).
+A simple python search library benchmark
+========================================
 
 Supporting:
- * whoosh
- * xappy / xapian
+ * whoosh (a search library in pure Python)
+ * xappy / xapian (Python + C++)
 
-Note: for whoosh indexing, there is a USE_MULTIPROCESSING setting.
+How it benchmarks
+-----------------
+First, we create a list of documents that are used for all the benchmarks
+(it uses exactly the same list of the same documents for all, of course).
+
+The documents contain some random word, the word length, and some extra fields
+to pump up the size of the document (you can create quite large indexes that
+way).
+
+Then we create an index for these documents, all fields are indexed/stored.
+
+Then we search the index for all words in random order and read all stored
+fields for the search results.
+
+Notes
+-----
+For whoosh indexing, there is a USE_MULTIPROCESSING setting.
 When using True, keep in mind that it could be not quite fair (as other
 indexers maybe don't use multiple cores / processes). But OTOH, if it
 is that easy, why not use it? :)
@@ -34,6 +46,7 @@ EXTRA_FIELD_COUNT = 10
 EXTRA_FIELD_LEN = 100
 EXTRA_FIELDS = ["f%d" % i for i in xrange(EXTRA_FIELD_COUNT)]
 
+
 def generate_word(length):
     chars = list(u"abcdefghijklmnopqrstuvwxyz" +
                  u"ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
@@ -41,6 +54,7 @@ def generate_word(length):
     r = xrange(length)
     word = u''.join(choice(chars) for i in r)
     return word
+
 
 def generate_data():
     # prepare data, so this doesn't go into timings:
