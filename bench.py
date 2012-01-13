@@ -8,10 +8,11 @@ A simple python search library benchmark
 import codecs
 import os
 import shutil
-from random import choice, shuffle
+from random import choice, shuffle, randint
 import time
 
 DOC_COUNT = 3000 # how many documents do we index (same count for search)
+COMPLEX_COUNT = 300 # how many complex searches to run
 WORD_LEN = 10 # word length we put into index and also search for
 
 # these are just extra fields to make the indexed documents bigger,
@@ -47,6 +48,9 @@ def generate_data():
     for w in WORDS:
         doc = {}
         doc['word'] = w
+        doc['two'] = unicode(randint(0, 1))
+        doc['four'] = unicode(randint(0, 3))
+        doc['eight'] = unicode(randint(0, 7))
         for field in EXTRA_FIELDS:
             doc[field] = generate_word(EXTRA_FIELD_LEN)
         DOCS.append(doc)
@@ -75,6 +79,8 @@ class Bench(object):
         print "Indexing takes %.1fs (%.1f/s)" % (t_index, DOC_COUNT/t_index)
         t_search = self.bench(self.search)
         print "Searching takes %.1fs (%.1f/s)" % (t_search, DOC_COUNT/t_search)
+        t_search_complex = self.bench(self.search_complex)
+        print "Complex Searching takes %.1fs (%.1f/s)" % (t_search_complex, COMPLEX_COUNT/t_search_complex)
         print
         self.remove_index()
 
@@ -83,7 +89,7 @@ import whoosh
 from whoosh.fields import Schema, ID, NUMERIC
 from whoosh.index import open_dir, create_in
 from whoosh.filedb.multiproc import MultiSegmentWriter
-from whoosh.query import Term
+from whoosh.query import Term, And
 
 
 class Whoosh(Bench):
@@ -92,7 +98,7 @@ class Whoosh(Bench):
 
     def create_index(self):
         fields = {}
-        for field in ['word'] + EXTRA_FIELDS:
+        for field in ['word', 'two', 'four', 'eight', ] + EXTRA_FIELDS:
             fields[field] = ID(stored=True)
         schema = Schema(**fields)
         os.mkdir(self.index_dir)
@@ -116,8 +122,21 @@ class Whoosh(Bench):
                     # make sure to really read the stored fields
                     dummy = repr(result.fields())
 
+    def search_complex(self):
+        ix = open_dir(self.index_dir)
+        with ix.searcher() as searcher:
+            query = And([Term('two', '1'),
+                         Term('four', '2'),
+                         Term('eight', '3')])
+            for i in xrange(COMPLEX_COUNT):
+                results = searcher.search(query, limit=None)
+                for result in results:
+                    # make sure to really read the stored fields
+                    dummy = repr(result.fields())
+
 
 import xapian
+from xapian import Query
 import xappy
 from xappy import IndexerConnection, SearchConnection, \
                   FieldActions, UnprocessedDocument
@@ -129,7 +148,7 @@ class Xappy(Bench):
 
     def create_index(self):
         iconn = IndexerConnection(self.index_dir)
-        for field in ['word'] + EXTRA_FIELDS:
+        for field in ['word', 'two', 'four', 'eight', ] + EXTRA_FIELDS:
             iconn.add_field_action(field, FieldActions.STORE_CONTENT)
             iconn.add_field_action(field, FieldActions.INDEX_EXACT)
         iconn.close()
@@ -152,6 +171,20 @@ class Xappy(Bench):
                 dummy = repr(result.data)
         sconn.close()
 
+    def search_complex(self):
+        sconn = SearchConnection(self.index_dir)
+        terms = [
+            sconn.query_field('two', '1'),
+            sconn.query_field('four', '2'),
+            sconn.query_field('eight', '3'),
+        ]
+        query = Query(Query.OP_AND, terms)
+        for i in xrange(COMPLEX_COUNT):
+            results = sconn.search(query, 0, sconn.get_doccount())
+            for result in results:
+                # make sure to really read the stored fields
+                dummy = repr(result.data)
+        sconn.close()
 
 if __name__ == '__main__':
     generate_data()
