@@ -25,8 +25,14 @@ import shutil
 from random import choice, shuffle
 import time
 
-WORD_COUNT = 10000
-WORD_LEN = 10
+DOC_COUNT = 3000 # how many documents do we index (same count for search)
+WORD_LEN = 10 # word length we put into index and also search for
+
+# these are just extra fields to make the indexed documents bigger,
+# they are just stored and indexed, but not used for searching:
+EXTRA_FIELD_COUNT = 10
+EXTRA_FIELD_LEN = 100
+EXTRA_FIELDS = ["f%d" % i for i in xrange(EXTRA_FIELD_COUNT)]
 
 def generate_word(length):
     chars = list(u"abcdefghijklmnopqrstuvwxyz" +
@@ -37,12 +43,23 @@ def generate_word(length):
     return word
 
 def generate_data():
-    global WORD_COUNT, WORDS, SHUFFLED_WORDS
     # prepare data, so this doesn't go into timings:
-    r = xrange(WORD_COUNT)
-    WORDS = [generate_word(WORD_LEN) for i in r]
+    global DOC_COUNT, WORDS, SHUFFLED_WORDS, DOCS
+    print "Params:"
+    print "DOC_COUNT: %d WORD_LEN: %d" % (DOC_COUNT, WORD_LEN)
+    print "EXTRA_FIELD_COUNT: %d EXTRA_FIELD_LEN: %d" % (EXTRA_FIELD_COUNT, EXTRA_FIELD_LEN)
+    print
+    WORDS = set() # make sure words are unique
+    while len(WORDS) < DOC_COUNT:
+        WORDS.add(generate_word(WORD_LEN))
+    WORDS = list(WORDS)
     SHUFFLED_WORDS = WORDS[:]
     shuffle(SHUFFLED_WORDS)
+    DOCS = []
+    for w in WORDS:
+        doc = dict(word=w, length=unicode(len(w)))
+        doc.update((k, generate_word(EXTRA_FIELD_LEN)) for k in EXTRA_FIELDS)
+        DOCS.append(doc)
 
 
 class Bench(object):
@@ -51,6 +68,10 @@ class Bench(object):
 
     def remove_index(self):
         shutil.rmtree(self.index_dir)
+
+    def make_docs(self):
+        for doc in DOCS:
+            yield doc
 
     def bench(self, func):
         t_start = time.time()
@@ -61,9 +82,9 @@ class Bench(object):
     def bench_all(self):
         print "Benchmarking: %s" % self.NAME
         t_index = self.bench(self.create_index)
-        print "Indexing %d words takes %.1fs (%.1f/s)" % (WORD_COUNT, t_index, WORD_COUNT/t_index)
+        print "Indexing takes %.1fs (%.1f/s)" % (t_index, DOC_COUNT/t_index)
         t_search = self.bench(self.search)
-        print "Searching %d words takes %.1fs (%.1f/s)" % (WORD_COUNT, t_search, WORD_COUNT/t_search)
+        print "Searching takes %.1fs (%.1f/s)" % (t_search, DOC_COUNT/t_search)
         print
         self.remove_index()
 
@@ -79,15 +100,14 @@ class Whoosh(Bench):
     NAME = 'whoosh %d.%d.%d' % whoosh.__version__
     USE_MULTIPROCESSING = True
 
-    def make_docs(self):
-        for word in WORDS:
-            yield {'word': word, 'length': len(word), }
-
     def create_index(self):
-        schema = Schema(
+        fields = dict(
             word=ID(stored=True),
             length=NUMERIC(stored=True),
         )
+        for k in EXTRA_FIELDS:
+            fields[k] = ID(stored=True)
+        schema = Schema(**fields)
         os.mkdir(self.index_dir)
         ix = create_in(self.index_dir, schema)
         if self.USE_MULTIPROCESSING:
@@ -120,17 +140,15 @@ class Xappy(Bench):
     NAME = 'xappy %s / xapian %d.%d.%d' % (xappy.__version__,
                                            xapian.major_version(), xapian.minor_version(), xapian.revision(), )
 
-    def make_docs(self):
-        for word in WORDS:
-            # note: xappy doesn't like int
-            yield {'word': word, 'length': unicode(len(word)), }
-
     def create_index(self):
         iconn = IndexerConnection(self.index_dir)
         iconn.add_field_action('word', FieldActions.STORE_CONTENT)
         iconn.add_field_action('word', FieldActions.INDEX_EXACT)
         iconn.add_field_action('length', FieldActions.STORE_CONTENT)
         iconn.add_field_action('length', FieldActions.INDEX_EXACT)
+        for k in EXTRA_FIELDS:
+            iconn.add_field_action(k, FieldActions.STORE_CONTENT)
+            iconn.add_field_action(k, FieldActions.INDEX_EXACT)
         iconn.close()
         iconn = IndexerConnection(self.index_dir)
         for doc in self.make_docs():
