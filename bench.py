@@ -45,8 +45,10 @@ def generate_data():
     shuffle(SHUFFLED_WORDS)
     DOCS = []
     for w in WORDS:
-        doc = dict(word=w)
-        doc.update((k, generate_word(EXTRA_FIELD_LEN)) for k in EXTRA_FIELDS)
+        doc = {}
+        doc['word'] = w
+        for field in EXTRA_FIELDS:
+            doc[field] = generate_word(EXTRA_FIELD_LEN)
         DOCS.append(doc)
 
 
@@ -89,9 +91,9 @@ class Whoosh(Bench):
     USE_MULTIPROCESSING = True
 
     def create_index(self):
-        fields = dict(word=ID(stored=True))
-        for k in EXTRA_FIELDS:
-            fields[k] = ID(stored=True)
+        fields = {}
+        for field in ['word'] + EXTRA_FIELDS:
+            fields[field] = ID(stored=True)
         schema = Schema(**fields)
         os.mkdir(self.index_dir)
         ix = create_in(self.index_dir, schema)
@@ -127,11 +129,9 @@ class Xappy(Bench):
 
     def create_index(self):
         iconn = IndexerConnection(self.index_dir)
-        iconn.add_field_action('word', FieldActions.STORE_CONTENT)
-        iconn.add_field_action('word', FieldActions.INDEX_EXACT)
-        for k in EXTRA_FIELDS:
-            iconn.add_field_action(k, FieldActions.STORE_CONTENT)
-            iconn.add_field_action(k, FieldActions.INDEX_EXACT)
+        for field in ['word'] + EXTRA_FIELDS:
+            iconn.add_field_action(field, FieldActions.STORE_CONTENT)
+            iconn.add_field_action(field, FieldActions.INDEX_EXACT)
         iconn.close()
         iconn = IndexerConnection(self.index_dir)
         for doc in self.make_docs():
