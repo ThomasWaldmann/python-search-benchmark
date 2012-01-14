@@ -85,109 +85,116 @@ class Bench(object):
         self.remove_index()
 
 
-import whoosh
-from whoosh.fields import Schema, ID, NUMERIC
-from whoosh.index import open_dir, create_in
-from whoosh.filedb.multiproc import MultiSegmentWriter
-from whoosh.query import Term, And
+try:
+    import whoosh
+    from whoosh.fields import Schema, ID, NUMERIC
+    from whoosh.index import open_dir, create_in
+    from whoosh.filedb.multiproc import MultiSegmentWriter
+    from whoosh.query import Term, And
+except ImportError:
+    whoosh = None
 
+if whoosh:
+    class Whoosh(Bench):
+        NAME = 'whoosh %d.%d.%d' % whoosh.__version__
+        USE_MULTIPROCESSING = True
 
-class Whoosh(Bench):
-    NAME = 'whoosh %d.%d.%d' % whoosh.__version__
-    USE_MULTIPROCESSING = True
+        def create_index(self):
+            fields = {}
+            for field in ['word', 'two', 'four', 'eight', ] + EXTRA_FIELDS:
+                fields[field] = ID(stored=True)
+            schema = Schema(**fields)
+            os.mkdir(self.index_dir)
+            ix = create_in(self.index_dir, schema)
+            if self.USE_MULTIPROCESSING:
+                writer = MultiSegmentWriter(ix, limitmb=128)
+            else:
+                writer = ix.writer(limitmb=256)
+            with writer as writer:
+                for doc in self.make_docs():
+                    writer.add_document(**doc)
+            ix.close()
 
-    def create_index(self):
-        fields = {}
-        for field in ['word', 'two', 'four', 'eight', ] + EXTRA_FIELDS:
-            fields[field] = ID(stored=True)
-        schema = Schema(**fields)
-        os.mkdir(self.index_dir)
-        ix = create_in(self.index_dir, schema)
-        if self.USE_MULTIPROCESSING:
-            writer = MultiSegmentWriter(ix, limitmb=128)
-        else:
-            writer = ix.writer(limitmb=256)
-        with writer as writer:
+        def search(self):
+            ix = open_dir(self.index_dir)
+            with ix.searcher() as searcher:
+                for word in SHUFFLED_WORDS:
+                    query = Term('word', word)
+                    results = searcher.search(query, limit=1)
+                    for result in results:
+                        # make sure to really read the stored fields
+                        dummy = repr(result.fields())
+
+        def search_complex(self):
+            ix = open_dir(self.index_dir)
+            with ix.searcher() as searcher:
+                query = And([Term('two', '1'),
+                             Term('four', '2'),
+                             Term('eight', '3')])
+                for i in xrange(COMPLEX_COUNT):
+                    results = searcher.search(query, limit=10)
+                    for result in results:
+                        # make sure to really read the stored fields
+                        dummy = repr(result.fields())
+
+try:
+    import xapian
+    from xapian import Query
+    import xappy
+    from xappy import IndexerConnection, SearchConnection, \
+                      FieldActions, UnprocessedDocument
+except ImportError:
+    xapian = None
+
+if xapian:
+    class Xappy(Bench):
+        NAME = 'xappy %s / xapian %d.%d.%d' % (xappy.__version__,
+                                               xapian.major_version(), xapian.minor_version(), xapian.revision(), )
+
+        def create_index(self):
+            iconn = IndexerConnection(self.index_dir)
+            for field in ['word', 'two', 'four', 'eight', ] + EXTRA_FIELDS:
+                iconn.add_field_action(field, FieldActions.STORE_CONTENT)
+                iconn.add_field_action(field, FieldActions.INDEX_EXACT)
+            iconn.close()
+            iconn = IndexerConnection(self.index_dir)
             for doc in self.make_docs():
-                writer.add_document(**doc)
-        ix.close()
+                xappy_doc = UnprocessedDocument()
+                for k, v in doc.items():
+                    xappy_doc.fields.append(xappy.Field(k, v))
+                iconn.add(xappy_doc)
+            iconn.flush()
+            iconn.close()
 
-    def search(self):
-        ix = open_dir(self.index_dir)
-        with ix.searcher() as searcher:
+        def search(self):
+            sconn = SearchConnection(self.index_dir)
             for word in SHUFFLED_WORDS:
-                query = Term('word', word)
-                results = searcher.search(query, limit=1)
+                query = sconn.query_field('word', word)
+                results = sconn.search(query, 0, 1)
                 for result in results:
                     # make sure to really read the stored fields
-                    dummy = repr(result.fields())
+                    dummy = repr(result.data)
+            sconn.close()
 
-    def search_complex(self):
-        ix = open_dir(self.index_dir)
-        with ix.searcher() as searcher:
-            query = And([Term('two', '1'),
-                         Term('four', '2'),
-                         Term('eight', '3')])
+        def search_complex(self):
+            sconn = SearchConnection(self.index_dir)
+            terms = [
+                sconn.query_field('two', '1'),
+                sconn.query_field('four', '2'),
+                sconn.query_field('eight', '3'),
+            ]
+            query = Query(Query.OP_AND, terms)
             for i in xrange(COMPLEX_COUNT):
-                results = searcher.search(query, limit=10)
+                results = sconn.search(query, 0, 10)
                 for result in results:
                     # make sure to really read the stored fields
-                    dummy = repr(result.fields())
-
-
-import xapian
-from xapian import Query
-import xappy
-from xappy import IndexerConnection, SearchConnection, \
-                  FieldActions, UnprocessedDocument
-
-
-class Xappy(Bench):
-    NAME = 'xappy %s / xapian %d.%d.%d' % (xappy.__version__,
-                                           xapian.major_version(), xapian.minor_version(), xapian.revision(), )
-
-    def create_index(self):
-        iconn = IndexerConnection(self.index_dir)
-        for field in ['word', 'two', 'four', 'eight', ] + EXTRA_FIELDS:
-            iconn.add_field_action(field, FieldActions.STORE_CONTENT)
-            iconn.add_field_action(field, FieldActions.INDEX_EXACT)
-        iconn.close()
-        iconn = IndexerConnection(self.index_dir)
-        for doc in self.make_docs():
-            xappy_doc = UnprocessedDocument()
-            for k, v in doc.items():
-                xappy_doc.fields.append(xappy.Field(k, v))
-            iconn.add(xappy_doc)
-        iconn.flush()
-        iconn.close()
-
-    def search(self):
-        sconn = SearchConnection(self.index_dir)
-        for word in SHUFFLED_WORDS:
-            query = sconn.query_field('word', word)
-            results = sconn.search(query, 0, 1)
-            for result in results:
-                # make sure to really read the stored fields
-                dummy = repr(result.data)
-        sconn.close()
-
-    def search_complex(self):
-        sconn = SearchConnection(self.index_dir)
-        terms = [
-            sconn.query_field('two', '1'),
-            sconn.query_field('four', '2'),
-            sconn.query_field('eight', '3'),
-        ]
-        query = Query(Query.OP_AND, terms)
-        for i in xrange(COMPLEX_COUNT):
-            results = sconn.search(query, 0, 10)
-            for result in results:
-                # make sure to really read the stored fields
-                dummy = repr(result.data)
-        sconn.close()
+                    dummy = repr(result.data)
+            sconn.close()
 
 if __name__ == '__main__':
     generate_data()
-    Xappy('xapian_ix').bench_all()
-    Whoosh('whoosh_ix').bench_all()
+    if xapian:
+        Xappy('xapian_ix').bench_all()
+    if whoosh:
+        Whoosh('whoosh_ix').bench_all()
 
