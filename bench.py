@@ -51,8 +51,6 @@ def generate_data():
         doc['two'] = unicode(randint(0, 1))
         doc['four'] = unicode(randint(0, 3))
         doc['eight'] = unicode(randint(0, 7))
-        for field in EXTRA_FIELDS:
-            doc[field] = generate_word(EXTRA_FIELD_LEN)
         DOCS.append(doc)
 
 
@@ -65,7 +63,14 @@ class Bench(object):
 
     def make_docs(self):
         for doc in DOCS:
-            yield doc
+            d = {}
+            d.update(doc)
+            # we don't permanently store the extra fields in DOCS, because for
+            # a big DOC_COUNT this would eat up a lot of memory (maybe more
+            # than we have):
+            for field in EXTRA_FIELDS:
+                d[field] = generate_word(EXTRA_FIELD_LEN)
+            yield d
 
     def bench(self, func):
         t_start = time.time()
