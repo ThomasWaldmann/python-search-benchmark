@@ -129,7 +129,7 @@ class Whoosh(Bench):
                          Term('four', '2'),
                          Term('eight', '3')])
             for i in xrange(COMPLEX_COUNT):
-                results = searcher.search(query, limit=None)
+                results = searcher.search(query, limit=10)
                 for result in results:
                     # make sure to really read the stored fields
                     dummy = repr(result.fields())
@@ -180,7 +180,7 @@ class Xappy(Bench):
         ]
         query = Query(Query.OP_AND, terms)
         for i in xrange(COMPLEX_COUNT):
-            results = sconn.search(query, 0, sconn.get_doccount())
+            results = sconn.search(query, 0, 10)
             for result in results:
                 # make sure to really read the stored fields
                 dummy = repr(result.data)
