@@ -196,10 +196,67 @@ if xapian:
                     dummy = repr(result.data)
             sconn.close()
 
+
+from xodb import Array, Integer, Schema as XODBSchema, String, open as xodb_open
+
+
+class Benchmark(object):
+
+    def __init__(self, word, two, four, eight, **extra_fields):
+        self.word = word
+        self.two = two
+        self.four = four
+        self.eight = eight
+        for field, value in extra_fields:
+            setattr(self, field, value)
+
+
+class BenchmarkSchema(XODBSchema):
+    word = String.using(default='en')
+    two = String.using(default='en')
+    four = String.using(default='en')
+    eight = String.using(default='en')
+
+for field in EXTRA_FIELDS:
+    setattr(BenchmarkSchema, field, String.using(default='en'))
+
+
+class XODB(Bench):
+    NAME = 'xodb %s / xapian %s' % ('0.4.17', xapian.version_string())
+
+    def create_index(self):
+        db = xodb_open(self.index_dir)
+        db.map(Benchmark, BenchmarkSchema)
+
+        for doc in self.make_docs():
+            db.add(Benchmark(**doc))
+        db.flush()
+        db.close()
+
+    def search(self):
+        db = xodb_open(self.index_dir)
+        for word in SHUFFLED_WORDS:
+            results = db.query('word:%s' % word, limit=1)
+            for res in results:
+                dummy = repr(res)
+        db.close()
+
+    def search_complex(self):
+        db = xodb_open(self.index_dir)
+        query = "two:1 AND four:2 AND eight:3"
+        for i in xrange(COMPLEX_COUNT):
+            results = db.query(query, limit=10)
+            for result in results:
+                # make sure to really read the stored fields
+                dummy = repr(result)
+        db.close()
+
+
 if __name__ == '__main__':
     generate_data()
+
     if xapian:
         Xappy('xapian_ix').bench_all()
+        XODB('xapian_ix').bench_all()
     if whoosh:
         Whoosh('whoosh_ix').bench_all()
-
