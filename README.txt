@@ -3,7 +3,7 @@ A simple python search library benchmark
 
 Supporting:
  * whoosh (a search library in pure Python)
- * xappy / xapian (Python + C++)
+ * xodb / xappy / xapian (Python + C++)
 
 How it benchmarks
 -----------------
@@ -26,7 +26,8 @@ When using True, keep in mind that it could be not quite fair (as other
 indexers maybe don't use multiple cores / processes). But OTOH, if it
 is that easy, why not use it? :)
 
-To make the Xapian install as simple as possible its recommended that you put
+To make the Xapian install as simple as possible it's recommended that you put
 the xapian-core and xapian-bindings into the same virtualenv which hosts these
 benchmarks. To help we've included a shell script which will attempt to set
-these up for you.
+these up for you: xapian-setup.sh
+
